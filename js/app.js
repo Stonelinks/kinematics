@@ -48,8 +48,9 @@ class Link {
     }
 
     render(context) {
-        context.strokeStyle = "#FFFFFF"
-        context.lineWidth = 5
+        //context.strokeStyle = "#FFFFFF"
+        context.strokeStyle = "#EFFBFB"
+        context.lineWidth = 2
         context.beginPath()
         context.moveTo(this.x, this.y)
         context.lineTo(this.getEndX(), this.getEndY())
@@ -71,6 +72,22 @@ class Link {
         }
     }
 }
+
+
+class Cursor {
+    constructor(x, y) {
+        this.x = x
+        this.y = y
+    }
+    render(context) {
+        context.strokeStyle = "#FFFFFF"
+        context.lineWidth = 3
+        context.beginPath();
+        context.arc(this.x, this.y, 10, 0, 2 * Math.PI);
+        context.stroke();
+    }
+}
+
 
 class ArticulatedSystem {
     constructor(x, y) {
@@ -125,8 +142,8 @@ var CanvasView = Marionette.ItemView.extend({
         'mousemove': 'onMouseMove'
     },
 
-    width: 640,
-    height: 480,
+    width: null,
+    height: null,
 
     updateWidthAndHeight: function () {
         var rect = this.$el.find('canvas')[0].getBoundingClientRect()
@@ -165,20 +182,28 @@ var CanvasView = Marionette.ItemView.extend({
 
     onMouseMove: function (e) {
         this.mousePos = this.getMousePos(e)
+        //this.cursor.x = this.mousePos.x
+        //this.cursor.y = this.mousePos.y
     },
 
     onShow: function () {
         this.canvas = this.$el.find('canvas')[0];
         this.context = this.canvas.getContext('2d');
-        this.context.fillStyle = "rgb(200,0,0)";
+        this.context.fillStyle = "rgb(59,0,86)";
 
         this.onWindowResize()
 
         this.t = 0
 
-        this.system = new ArticulatedSystem(0, 0)
-        for (var i = 0; i < 1000; i++) {
-            this.system.addLink(5)
+        this.cursor = new Cursor(0, 0)
+
+        var systemLength = 100
+        for (var i = 0; i < this.numSystems; i++) {
+            var system = this['system' + i] = new ArticulatedSystem((i +.5) * this.width / this.numSystems, this.height)
+            for (var j = 0; j < systemLength; j++) {
+                //system.addLink(10)
+                system.addLink(.05 * systemLength * j / (i + 30))
+            }
         }
 
         this.animate()
@@ -188,19 +213,25 @@ var CanvasView = Marionette.ItemView.extend({
         window.removeEventListener('resize', this.onWindowResize, false);
     },
 
+    numSystems: 30,
+
     animate: function () {
         this.t += 1;
         this.context.clearRect(0, 0, this.width, this.height)
+        this.context.strokeStyle = "#EFFBFB"
         this.context.fillRect(0, 0, this.width, this.height)
 
-        this.system.render(this.context)
+        var cursorSpeed = 0.035
+        var cursorDistance = 175
+        this.cursor.x = this.width / 2 + Math.cos(this.t * cursorSpeed) * cursorDistance
+        this.cursor.y = this.height / 2 + Math.sin(this.t * cursorSpeed) * cursorDistance
+        this.cursor.render(this.context)
 
-        this.system.solveIK(this.mousePos.x, this.mousePos.y)
-
-        // cursor
-        this.context.beginPath();
-        this.context.arc(this.mousePos.x, this.mousePos.y, 15, 0, 2 * Math.PI);
-        this.context.stroke();
+        for (var i = 0; i < this.numSystems; i++) {
+            var system = this['system' + i]
+            system.render(this.context)
+            system.solveIK(this.cursor.x, this.cursor.y)
+        }
 
         requestAnimationFrame(this.animate)
         //setTimeout(this.animate, 1000)
