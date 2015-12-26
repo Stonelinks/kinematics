@@ -14,7 +14,7 @@ require('bootstrap');
 var WIDTH = 620
 var HEIGHT = 480
 
-class Arm {
+class Link {
     constructor(x, y, len, angle) {
         this.x = x
         this.y = y
@@ -23,24 +23,31 @@ class Arm {
         this.parent = null
     }
 
+    //getEndX() {
+    //    var angle = this.angle
+    //    var parent = this.parent
+    //    while(parent) {
+    //        angle += parent.angle
+    //        parent = parent.parent
+    //    }
+    //    return this.x + Math.cos(angle) * this.len
+    //}
+    //getEndY() {
+    //    var angle = this.angle
+    //    var parent = this.parent
+    //    while(parent) {
+    //        angle += parent.angle
+    //        parent = parent.parent
+    //    }
+    //    return this.y + Math.sin(angle) * this.len
+    //}
+
     getEndX() {
-        var angle = this.angle
-        var parent = this.parent
-        while (parent) {
-            angle += parent.angle
-            parent = parent.parent
-        }
-        return this.x + Math.cos(angle) * this.len
+        return this.x + Math.cos(this.angle) * this.len
     }
 
     getEndY() {
-        var angle = this.angle
-        var parent = this.parent
-        while (parent) {
-            angle += parent.angle
-            parent = parent.parent
-        }
-        return this.y + Math.sin(angle) * this.len
+        return this.y + Math.sin(this.angle) * this.len
     }
 
     render(context) {
@@ -51,29 +58,58 @@ class Arm {
         context.lineTo(this.getEndX(), this.getEndY())
         context.stroke()
     }
+
+    pointAt(x, y) {
+        var dx = x - this.x
+        var dy = y - this.y
+        this.angle = Math.atan2(dy, dx)
+    }
+
+    resetBase(x, y) {
+        this.pointAt(x, y)
+        this.x = x - Math.cos(this.angle) * this.len
+        this.y = y - Math.sin(this.angle) * this.len
+        if (this.parent) {
+            this.parent.resetBase(this.x, this.y)
+        }
+    }
 }
 
-class FKSystem {
+class ArticulatedSystem {
     constructor(x, y) {
         this.x = x
         this.y = y
-        this.arms = []
-        this.lastArm = null
+        this.links = []
+        this.lastLink = null
     }
 
-    addArm(len) {
-        var arm = new Arm(0, 0, len, 0)
-        this.arms.push(arm)
-        if (this.lastArm) {
-            arm.parent = this.lastArm
+    addLink(len) {
+        var link = new Link(0, 0, len, 0)
+        this.links.push(link)
+        if (this.lastLink) {
+            link.parent = this.lastLink
         }
-        this.lastArm = arm
+        this.lastLink = link
+    }
+
+    render(context) {
+        for (var i = 0; i < this.links.length; i++) {
+            this.links[i].render(context)
+        }
+    }
+
+    setLinkAngle(index, angle) {
+        this.links[index].angle = angle
+    }
+
+    solveIK(x, y) {
+        this.lastLink.resetBase(x, y)
         this.update()
     }
 
     update() {
-        for (var i = 0; i < this.arms.length; i++) {
-            var arm = this.arms[i]
+        for (var i = 0; i < this.links.length; i++) {
+            var arm = this.links[i]
             if (arm.parent) {
                 arm.x = arm.parent.getEndX()
                 arm.y = arm.parent.getEndY()
@@ -83,21 +119,36 @@ class FKSystem {
             }
         }
     }
-
-    render(context) {
-        for (var i = 0; i < this.arms.length; i++) {
-            this.arms[i].render(context)
-        }
-    }
-
-    rotateArm(index, angle) {
-        this.arms[index].angle = angle
-    }
 }
-
 
 var CanvasView = Marionette.ItemView.extend({
     template: require('../tmpl/canvas.hbs'),
+
+    events: {
+        'mousemove': 'onMouseMove'
+    },
+
+    getMousePos: function (evt) {
+        var rect = this.$el.find('canvas')[0].getBoundingClientRect()
+        var root = document.documentElement;
+
+        // return relative mouse position
+        var mouseX = evt.clientX - rect.left - root.scrollLeft;
+        var mouseY = evt.clientY - rect.top - root.scrollTop;
+        return {
+            x: mouseX,
+            y: mouseY
+        };
+    },
+
+    mousePos: {
+      x: WIDTH / 2,
+      y: HEIGHT / 2
+    },
+
+    onMouseMove: function (e) {
+        this.mousePos = this.getMousePos(e)
+    },
 
     onShow: function () {
         this.canvas = this.$el.find('canvas')[0];
@@ -106,29 +157,32 @@ var CanvasView = Marionette.ItemView.extend({
         this.canvas.height = this.context.height = HEIGHT;
 
         this.t = 0
-        this.fks = new FKSystem(WIDTH / 2, HEIGHT / 2)
-        this.fks.addArm(100)
-        this.fks.addArm(100)
-        this.fks.addArm(100)
-        //this.fks.addArm(150)
-        //this.fks.addArm(100)
+
+        this.system = new ArticulatedSystem(WIDTH / 2, HEIGHT / 2)
+        for (var i = 0; i < 4; i++) {
+            this.system.addLink(50)
+        }
 
         this.animate = this.animate.bind(this)
         this.animate()
     },
 
     animate: function () {
-        this.t += 1
+        this.t += 1;
         this.context.clearRect(0, 0, WIDTH, HEIGHT)
 
-        this.fks.rotateArm(0, Math.sin(this.t * 0.05) * 1.2)
-        this.fks.rotateArm(1, Math.sin(this.t * 0.15) * 0.2)
-        this.fks.rotateArm(2, Math.sin(this.t * 0.02) * 3.2)
 
-        this.fks.update()
-        this.fks.render(this.context)
+        this.system.render(this.context)
+
+        if (this.mousePos) {
+            this.system.solveIK(this.mousePos.x, this.mousePos.y)
+            this.context.beginPath();
+            this.context.arc(this.mousePos.x, this.mousePos.y, 15, 0, 2 * Math.PI);
+            this.context.stroke();
+        }
 
         requestAnimationFrame(this.animate)
+        //setTimeout(this.animate, 1000)
     }
 });
 
