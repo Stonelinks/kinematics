@@ -11,9 +11,6 @@ Backbone.$ = window.$ = window.jQuery = $;
 var Marionette = require('backbone.marionette');
 require('bootstrap');
 
-var WIDTH = 620
-var HEIGHT = 480
-
 class Link {
     constructor(x, y, len, angle) {
         this.x = x
@@ -128,6 +125,26 @@ var CanvasView = Marionette.ItemView.extend({
         'mousemove': 'onMouseMove'
     },
 
+    width: 640,
+    height: 480,
+
+    updateWidthAndHeight: function () {
+        var rect = this.$el.find('canvas')[0].getBoundingClientRect()
+        this.width = rect.width
+        this.height = rect.height
+    },
+
+    onWindowResize: function () {
+        this.updateWidthAndHeight()
+        this.canvas.width = this.context.width = this.width;
+        this.canvas.height = this.context.height = this.height;
+    },
+
+    initialize: function () {
+        this.onWindowResize = this.onWindowResize.bind(this)
+        this.animate = this.animate.bind(this)
+    },
+
     getMousePos: function (evt) {
         var rect = this.$el.find('canvas')[0].getBoundingClientRect()
         var root = document.documentElement;
@@ -142,8 +159,8 @@ var CanvasView = Marionette.ItemView.extend({
     },
 
     mousePos: {
-      x: WIDTH / 2,
-      y: HEIGHT / 2
+        x: 0,
+        y: 0
     },
 
     onMouseMove: function (e) {
@@ -153,33 +170,37 @@ var CanvasView = Marionette.ItemView.extend({
     onShow: function () {
         this.canvas = this.$el.find('canvas')[0];
         this.context = this.canvas.getContext('2d');
-        this.canvas.width = this.context.width = WIDTH;
-        this.canvas.height = this.context.height = HEIGHT;
+        this.context.fillStyle = "rgb(200,0,0)";
+
+        this.onWindowResize()
 
         this.t = 0
 
-        this.system = new ArticulatedSystem(WIDTH / 2, HEIGHT / 2)
-        for (var i = 0; i < 4; i++) {
-            this.system.addLink(50)
+        this.system = new ArticulatedSystem(0, 0)
+        for (var i = 0; i < 1000; i++) {
+            this.system.addLink(5)
         }
 
-        this.animate = this.animate.bind(this)
         this.animate()
+    },
+
+    onDestroy: function () {
+        window.removeEventListener('resize', this.onWindowResize, false);
     },
 
     animate: function () {
         this.t += 1;
-        this.context.clearRect(0, 0, WIDTH, HEIGHT)
-
+        this.context.clearRect(0, 0, this.width, this.height)
+        this.context.fillRect(0, 0, this.width, this.height)
 
         this.system.render(this.context)
 
-        if (this.mousePos) {
-            this.system.solveIK(this.mousePos.x, this.mousePos.y)
-            this.context.beginPath();
-            this.context.arc(this.mousePos.x, this.mousePos.y, 15, 0, 2 * Math.PI);
-            this.context.stroke();
-        }
+        this.system.solveIK(this.mousePos.x, this.mousePos.y)
+
+        // cursor
+        this.context.beginPath();
+        this.context.arc(this.mousePos.x, this.mousePos.y, 15, 0, 2 * Math.PI);
+        this.context.stroke();
 
         requestAnimationFrame(this.animate)
         //setTimeout(this.animate, 1000)
